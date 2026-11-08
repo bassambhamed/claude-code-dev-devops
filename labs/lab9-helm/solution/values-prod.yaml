@@ -1,0 +1,11 @@
+# Production configuration profile for review, not an HA production platform.
+# Real deployments must provide images.digests.<service> from their published images.
+environment: Production
+images:
+  tag: "1.0"
+replicas: {catalog: 3, ordering: 3, gateway: 3, web: 1}
+resources:
+  requests: {cpu: 200m, memory: 256Mi}
+  limits: {cpu: "1", memory: 512Mi}
+postgres:
+  storage: 5Gi

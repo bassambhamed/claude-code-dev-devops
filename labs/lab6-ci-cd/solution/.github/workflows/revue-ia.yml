@@ -1,0 +1,143 @@
+# Revue de la PR par l'agent (claude-code-action). Elle INFORME le relecteur : elle ne
+# bloque jamais la fusion. Ne rendez pas ce workflow obligatoire : la gate est le job
+# « Gate » de ci.yml.
+#
+# - La consigne et le schéma (.claude/prompts/) sont lus sur la branche CIBLE de la PR.
+#   L'action fait de même pour tout .claude/ et CLAUDE.md : une PR ne choisit pas la
+#   consigne qui la relit. Sur la PR qui ajoute la consigne, la revue est donc ignorée.
+# - L'agent ne fait que lire (Read, Grep, Glob), en 8 tours et 1 dollar au plus, et toute
+#   demande de permission est refusée (dontAsk). Sa sortie est validée contre le schéma ;
+#   un second job, sans agent, la publie en commentaire de la PR.
+#
+# À configurer sur GitHub : le secret ANTHROPIC_API_KEY (voir le README du lab 6).
+name: Revue IA
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: revue-ia-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  revue:
+    name: Revue par l'agent
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      active: ${{ steps.preparer.outputs.active }}
+      revue: ${{ steps.revue.outputs.structured_output }}
+    env:
+      CONSIGNE: .claude/prompts/revue-pr.md
+      SCHEMA: .claude/prompts/schema-revue.json
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Préparer la consigne, le schéma et le diff
+        id: preparer
+        run: |
+          if ! git cat-file -e "origin/$BASE_REF:$CONSIGNE" 2>/dev/null ||
+             ! git cat-file -e "origin/$BASE_REF:$SCHEMA" 2>/dev/null; then
+            echo "::notice::Pas de consigne de revue sur $BASE_REF : revue ignorée. Elle s'appliquera aux PR suivantes, une fois celle-ci fusionnée."
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git show "origin/$BASE_REF:$SCHEMA" > "$RUNNER_TEMP/schema-revue.json"
+          schema="$(jq -c . "$RUNNER_TEMP/schema-revue.json")"
+          if [[ "$schema" == *"'"* ]]; then
+            echo "::error::$SCHEMA contient une apostrophe droite : claude_args ne peut pas le transmettre entre apostrophes."
+            exit 1
+          fi
+          # Sur une PR, HEAD est le commit de fusion : son premier parent est la branche cible.
+          git diff HEAD^1 HEAD > pr.diff
+          {
+            echo "active=true"
+            echo "schema=$schema"
+            echo "consigne<<FIN_DE_CONSIGNE"
+            git show "origin/$BASE_REF:$CONSIGNE"
+            echo
+            echo "Diff à relire : pr.diff"
+            echo "FIN_DE_CONSIGNE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Diff à relire : $(wc -l < pr.diff) lignes"
+
+      - name: Revue par l'agent
+        id: revue
+        if: steps.preparer.outputs.active == 'true'
+        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+        env:
+          # Sinon, le hook Stop du lab 2 lancerait dotnet test à la fin de la revue.
+          CLAUDE_SKIP_STOP_TESTS: "1"
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.preparer.outputs.consigne }}
+          claude_args: >-
+            --model sonnet
+            --max-turns 8
+            --max-budget-usd 1
+            --tools Read,Grep,Glob
+            --allowedTools Read,Grep,Glob
+            --permission-mode dontAsk
+            --json-schema '${{ steps.preparer.outputs.schema }}'
+
+      - name: Valider la revue contre le schéma
+        if: steps.preparer.outputs.active == 'true'
+        env:
+          REVUE: ${{ steps.revue.outputs.structured_output }}
+        run: |
+          printf '%s' "$REVUE" | jq . > revue.json
+          pipx run --spec check-jsonschema==0.39.0 check-jsonschema \
+            --schemafile "$RUNNER_TEMP/schema-revue.json" revue.json
+          jq -r '"Verdict : \(.verdict), \(.constats | length) constat(s)"' revue.json
+
+      - uses: actions/upload-artifact@v7
+        if: steps.preparer.outputs.active == 'true'
+        with:
+          name: revue-ia
+          path: revue.json
+
+  publier:
+    name: Publier la revue
+    needs: revue
+    if: needs.revue.outputs.active == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Commenter la PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVUE: ${{ needs.revue.outputs.revue }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          printf '%s' "$REVUE" | jq -r --arg sha "${SHA:0:7}" '
+            def cellule: tostring | gsub("\\|"; "\\|") | gsub("\n"; " ");
+            def rang: {"bloquant": 0, "majeur": 1, "mineur": 2}[.gravite];
+            "## Revue par l\u2019agent (informative)\n\n"
+            + "**Verdict : \(.verdict)** · \(.constats | length) constat(s) · commit `\($sha)`\n\n"
+            + .resume + "\n\n"
+            + (if (.constats | length) == 0 then ""
+               else "| Gravité | Catégorie | Où | Constat | Preuve | Correction |\n"
+                 + "|---|---|---|---|---|---|\n"
+                 + (.constats | sort_by(rang)
+                    | map("| \(.gravite) | \(.categorie) | `\(.fichier):\(.ligne // "-")` | \(.constat | cellule) | \(.preuve | cellule) | \(.correction | cellule) |")
+                    | join("\n"))
+                 + "\n\n"
+               end)
+            + "> Cette revue informe le relecteur ; elle ne bloque pas la fusion. La décision revient à la gate (contrôle « Gate » du workflow CI) et aux relecteurs."
+          ' > commentaire.md
+          # Un commentaire par commit relu : l'historique des revues reste lisible.
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file commentaire.md

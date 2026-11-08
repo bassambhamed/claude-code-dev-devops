@@ -1,0 +1,70 @@
+# Contrôles de sécurité de l'équipe ECommerce.
+# Le fichier .gitleaks.toml doit être à la racine du dépôt.
+#
+# Deux contrôles déterministes, qui bloquent la fusion en cas d'échec :
+#   - gitleaks analyse tout l'historique, avec la règle maison des clés de paiement ;
+#   - l'audit NuGet échoue sur toute dépendance (directe ou transitive) de gravité haute
+#     ou critique.
+#
+# Depuis le lab 6, ce workflow ne se déclenche plus seul sur les PR : ci.yml l'appelle
+# (workflow_call) et sa gate attend son résultat. Il tourne aussi chaque nuit, car une
+# vulnérabilité peut être publiée sans qu'aucun commit ne change.
+name: Sécurité
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *" # chaque nuit, 03:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tout l'historique : un secret supprimé reste dans les commits
+
+      - name: Installer gitleaks
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "$base/$archive"
+          curl -sSfL "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt" | grep " $archive\$" | sha256sum -c -
+          tar -xzf "$archive" gitleaks
+
+      - name: Analyser l'historique
+        run: ./gitleaks git --config .gitleaks.toml --redact --verbose .
+
+  dependances:
+    name: Dépendances vulnérables (NuGet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restaurer
+        run: dotnet restore ECommerce.slnx
+
+      - name: Auditer les paquets
+        run: |
+          dotnet list ECommerce.slnx package --vulnerable --include-transitive --format json > audit.json
+          jq -r '.projects[] | (.path | split("/") | last) as $projet
+                 | .frameworks[]? | ((.topLevelPackages // []) + (.transitivePackages // []))[]
+                 | select(.vulnerabilities) | . as $p | .vulnerabilities[]
+                 | "\(.severity)\t\($projet)\t\($p.id) \($p.resolvedVersion)\t\(.advisoryurl)"' audit.json \
+            | sort -u | tee vulnerabilites.txt
+          if grep -E -q '^(High|Critical)' vulnerabilites.txt; then
+            echo "::error::Dépendance de gravité haute ou critique : mettez à jour le paquet parent, ou épinglez le paquet transitif."
+            exit 1
+          fi
+          echo "Aucune vulnérabilité haute ou critique."

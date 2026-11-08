@@ -1,0 +1,62 @@
+# ECommerce.Ordering.Api
+
+**Type:** ASP.NET Core minimal API
+**Depends on:** ECommerce.ServiceDefaults, EF Core (in-memory provider), **calls Catalog over HTTP**
+
+The Ordering microservice. Owns orders, and validates products against the Catalog service
+before accepting an order.
+
+## Files
+
+| File | Responsibility |
+|---|---|
+| `Models/Order.cs` | `Order` + `OrderItem` entities and the `OrderStatus` enum. `Total` is computed from items. |
+| `Data/OrderingDbContext.cs` | EF Core context. Order→Items relationship with cascade delete. |
+| `Services/CatalogServiceClient.cs` | **Typed HTTP client** to Catalog (`https+http://catalog`) + the `CatalogProduct` DTO. |
+| `Endpoints/OrderingEndpoints.cs` | REST routes grouped under `/api/orders` + request DTOs. |
+| `Program.cs` | Registers DbContext, the typed client, and enum-as-string JSON serialization. |
+
+## Endpoints
+
+| Method | Route | Description |
+|---|---|---|
+| GET | `/api/orders` | List orders (with items) |
+| GET | `/api/orders/{id}` | Get one order (404 if missing) |
+| POST | `/api/orders` | Create an order — validates every product via Catalog |
+
+## The key inter-service pattern
+
+On `POST /api/orders`, the handler loops over the requested items and calls
+`catalog.GetProductAsync(id)` for each. It:
+
+1. **Rejects** the order (400) if any product doesn't exist.
+2. **Snapshots** the product's current name and price into the `OrderItem`, so the order is a
+   point-in-time record rather than a live reference.
+
+This is the synchronous, HTTP-based communication between services. Because the client is
+registered via `AddHttpClient<CatalogServiceClient>` it inherits service discovery and the
+standard resilience handlers from ServiceDefaults (auto-retry, timeout, circuit-breaker).
+
+## Storage
+
+In-memory (`UseInMemoryDatabase("ordering")`). Orders do **not** survive a restart.
+
+## Business telemetry
+
+`Telemetry/OrderingTelemetry.cs` publishes meter `ECommerce.Ordering`: committed order
+count, order amount with `currency=EUR`, and creation duration in seconds.
+`OrderingEndpoints.cs` records only after `SaveChangesAsync` succeeds. The activity source
+is `ECommerce.Ordering.Api`. No customer name or order identifier is a metric label.
+
+## Payment settings
+
+`Payment/PaymentOptions.cs` binds configuration. Startup logs include provider and endpoint
+only; never ApiKey. Development secrets come from user-secrets; deployed secrets from
+the environment secret store (`Payment__ApiKey`). A leaked key must be revoked even after
+the log statement is removed.
+
+## Requested delivery date (capstone)
+
+`Models/Order.cs` has a nullable `DateOnly RequestedDeliveryDate`, mapped to PostgreSQL `date` with an index. The `AddRequestedDeliveryDate` migration preserves existing rows. `Services/OrderValidation.cs` validates tomorrow through UTC today + 90 days inclusive. `Services/CreateOrderService.cs` uses the injected `TimeProvider`, saves the order, then records the lab 10 metrics and the low-cardinality delivery counter (`Services/DeliveryTelemetry.cs`).
+
+POST accepts optional `requestedDeliveryDate`; GET returns it, and `GET /api/orders?deliveryDate=yyyy-MM-dd` filters in SQL. Invalid dates produce 400. Consumer DTOs must be kept in sync.

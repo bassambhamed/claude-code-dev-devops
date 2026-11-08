@@ -1,0 +1,14 @@
+{
+  "name": "formation-dotnet",
+  "owner": {
+    "name": "Équipe ECommerce"
+  },
+  "plugins": [
+    {
+      "name": "dotnet-team",
+      "source": "./dotnet-team",
+      "description": "Pratiques de l’équipe .NET"
+    }
+  ],
+  "description": "Dispositif versionné de l’équipe ECommerce pour les dépôts .NET."
+}

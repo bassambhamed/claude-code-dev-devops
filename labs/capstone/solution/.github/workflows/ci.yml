@@ -1,0 +1,138 @@
+# Chaîne de validation de l'équipe ECommerce, et sa gate.
+#
+# Contrôles déterministes, rejoués à l'identique sur le poste par /ci-local :
+#   - build et tests (les tests démarrent PostgreSQL avec Testcontainers : Docker est
+#     disponible sur les runners ubuntu-latest) ;
+#   - format, sur les seuls fichiers C# modifiés : la base de code contient 7 écarts
+#     historiques dans src/ECommerce.ServiceDefaults/Extensions.cs, qu'une PR qui touche ce
+#     fichier devra corriger ;
+#   - sécurité (gitleaks et audit NuGet) : le workflow securite.yml du lab 3, appelé ici.
+#
+# La gate est le job « Gate » : c'est le SEUL contrôle à rendre obligatoire dans la
+# protection de la branche main. La revue par l'agent (revue-ia.yml) n'en fait pas partie :
+# elle informe, elle ne bloque pas.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-tests:
+    name: Build et tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build ECommerce.slnx
+
+      - name: Tests
+        run: dotnet test ECommerce.slnx --no-build
+
+  format:
+    name: Format (fichiers modifiés)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # il faut la base pour lister les fichiers modifiés
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Lister les fichiers C# modifiés
+        id: fichiers
+        env:
+          AVANT: ${{ github.event.before }}
+        run: |
+          # Sur une PR, HEAD est le commit de fusion : son premier parent est la branche cible.
+          # Sur un push, la base est le commit précédent de main.
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            base="HEAD^1"
+          elif git cat-file -e "${AVANT}^{commit}" 2>/dev/null; then
+            base="$AVANT"
+          else
+            base="HEAD^1"
+          fi
+          git diff --name-only --diff-filter=ACMR "$base" HEAD -- '*.cs' > fichiers.txt
+          echo "nombre=$(wc -l < fichiers.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "Base : $(git rev-parse --short "$base")"
+          cat fichiers.txt
+
+      - name: Vérifier le format
+        if: steps.fichiers.outputs.nombre != '0'
+        run: xargs dotnet format ECommerce.slnx --verify-no-changes --include < fichiers.txt
+
+  securite:
+    name: Sécurité
+    uses: ./.github/workflows/securite.yml
+    permissions:
+      contents: read
+
+  code-health:
+    name: Code Health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Comparer la santé du code à la référence
+        env:
+          BASE_PR: ${{ github.event.pull_request.base.sha }}
+          AVANT: ${{ github.event.before }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            base="$BASE_PR"
+          elif git cat-file -e "${AVANT}^{commit}" 2>/dev/null; then
+            base="$AVANT"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            base=HEAD^
+          else
+            base=HEAD
+          fi
+          dotnet run .claude/skills/code-health/codehealth.cs -- src --gate --base "$base"
+
+  gate:
+    name: Gate
+    # always() : sans lui, la gate serait « skipped » dès qu'un contrôle échoue, et GitHub
+    # compte un contrôle obligatoire ignoré comme réussi.
+    if: ${{ always() }}
+    needs: [build-tests, format, securite, code-health]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Tous les contrôles doivent avoir réussi
+        env:
+          RESULTATS: ${{ toJSON(needs) }}
+        run: |
+          {
+            echo "| Contrôle | Résultat |"
+            echo "|---|---|"
+            jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<<"$RESULTATS"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if jq -e 'all(.[]; .result == "success")' <<<"$RESULTATS" >/dev/null; then
+            echo "Gate ouverte : tous les contrôles ont réussi."
+          else
+            echo "::error::Gate fermée : $(jq -r '[to_entries[] | select(.value.result != "success") | "\(.key) (\(.value.result))"] | join(", ")' <<<"$RESULTATS")"
+            exit 1
+          fi

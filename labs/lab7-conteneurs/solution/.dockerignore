@@ -1,0 +1,25 @@
+# Build context: send only what the Dockerfiles copy.
+# Build outputs from the host: the image restores and builds its own.
+**/bin/
+**/obj/
+# Version control, tooling and documents that never go into an image.
+.git/
+.github/
+.claude/
+.vs/
+.vscode/
+.idea/
+tests/
+deploy/
+preuves/
+**/*.md
+**/Dockerfile
+.dockerignore
+docker-compose*.yml
+# Secrets and local settings.
+.env
+.env.*
+**/*.pfx
+**/*.key
+**/secrets.json
+**/*.user

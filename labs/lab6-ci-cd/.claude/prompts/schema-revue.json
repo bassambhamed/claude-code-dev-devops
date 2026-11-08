@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Revue de PR par l’agent",
+  "description": "Sortie de la consigne revue-pr.md. Version 1. Pas d’apostrophe droite dans ce fichier : il passe entre apostrophes dans claude_args.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "resume", "constats"],
+  "properties": {
+    "verdict": {
+      "description": "a_corriger dès qu’un constat est bloquant ou majeur, sinon livrable.",
+      "enum": ["livrable", "a_corriger"]
+    },
+    "resume": {
+      "description": "Deux à quatre phrases pour le relecteur humain : ce que change la PR et l’avis de l’agent.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 800
+    },
+    "constats": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gravite", "categorie", "fichier", "ligne", "constat", "preuve", "correction"],
+        "properties": {
+          "gravite": { "enum": ["bloquant", "majeur", "mineur"] },
+          "categorie": {
+            "enum": ["comportement", "contrat", "donnees", "convention", "tests", "securite"]
+          },
+          "fichier": {
+            "description": "Chemin relatif à la racine du dépôt, tel qu’il apparaît dans le diff.",
+            "type": "string",
+            "minLength": 1
+          },
+          "ligne": {
+            "description": "Numéro de ligne dans le fichier après modification, ou null pour tout le fichier.",
+            "type": ["integer", "null"],
+            "minimum": 1
+          },
+          "constat": { "type": "string", "minLength": 1 },
+          "preuve": {
+            "description": "La ligne en cause, le test qui l’attrape ou le calcul refait.",
+            "type": "string",
+            "minLength": 1
+          },
+          "correction": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

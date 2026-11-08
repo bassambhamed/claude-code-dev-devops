@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ecommerce
+description: ECommerce training chart to complete from the lab 8 manifests.
+type: application
+version: 0.1.0
+appVersion: "1.0"

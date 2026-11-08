@@ -1,0 +1,24 @@
+environment: Production
+existingSecret: ecommerce-db
+images:
+  registry: ecommerce
+  tag: "1.0"
+  pullPolicy: IfNotPresent
+  digests: {}
+replicas:
+  catalog: 1
+  ordering: 1
+  gateway: 1
+  web: 1
+resources:
+  requests: {cpu: 100m, memory: 128Mi}
+  limits: {cpu: "1", memory: 512Mi}
+postgres:
+  enabled: true
+  host: ""
+  image: postgres:17.11@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
+  storage: 1Gi
+  storageClass: ""
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}

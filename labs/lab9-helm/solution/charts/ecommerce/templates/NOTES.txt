@@ -1,0 +1,3 @@
+Gateway: kubectl port-forward -n {{ .Release.Namespace }} service/{{ include "ecommerce.name" . }}-gateway 5067:8080
+Web: kubectl port-forward -n {{ .Release.Namespace }} service/{{ include "ecommerce.name" . }}-web 5190:8080
+The existing Secret {{ .Values.existingSecret }} must hold POSTGRES_PASSWORD and both ConnectionStrings keys.

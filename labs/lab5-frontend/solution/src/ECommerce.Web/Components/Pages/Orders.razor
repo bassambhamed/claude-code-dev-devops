@@ -1,0 +1,142 @@
+@page "/orders"
+@using ECommerce.Web.Services
+@inject OrderingApiClient Ordering
+@inject ILogger<Orders> Logger
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Orders</PageTitle>
+<h1>Orders</h1>
+
+<div class="mb-3">
+    <label for="customer-filter" class="form-label">Filter by customer</label>
+    <input id="customer-filter" class="form-control mb-2" type="search" @ref="_filterInput"
+           @bind="_filter" @bind:event="oninput" @onkeydown="HandleKey" />
+    @if (_filter.Length > 0)
+    {
+        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="ClearFilter">Clear filter</button>
+    }
+    <button class="btn btn-sm btn-outline-secondary" @onclick="Load">Refresh</button>
+</div>
+
+@if (_loading)
+{
+    <div role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Loading orders…</div>
+}
+else if (_error)
+{
+    <p role="alert" class="alert alert-danger">Orders could not be loaded. Select Refresh to try again.</p>
+}
+else
+{
+    var visibleOrders = FilterOrders().ToList();
+    <p role="status">Showing @visibleOrders.Count of @_orders.Count orders@if (Search.Length > 0){<text> for “@Search”</text>}</p>
+    @if (_orders.Count == 0)
+    {
+        <p><em>No orders yet. Place one from the <a href="/products">Catalog</a> page.</em></p>
+    }
+    else if (visibleOrders.Count == 0)
+    {
+        <p>No orders match “@Search”.</p>
+    }
+    else
+    {
+        @foreach (var order in visibleOrders)
+        {
+            <div class="card mb-3" @key="order.Id">
+                <div class="card-header d-flex justify-content-between">
+                    <span><strong>Order #@order.Id</strong> — @order.Customer</span>
+                    <span class="badge bg-info text-dark">@order.Status</span>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Placed @order.CreatedAt.LocalDateTime</p>
+                    <ul>
+                        @foreach (var item in order.Items)
+                        {
+                            <li>@item.Quantity × @item.ProductName @@ @item.UnitPrice.ToString("C")</li>
+                        }
+                    </ul>
+                    <strong>Total: @order.Total.ToString("C")</strong>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private IReadOnlyList<OrderDto> _orders = [];
+    private string _filter = string.Empty;
+    private bool _loading = true;
+    private bool _error;
+    private bool _disposed;
+    private ElementReference _filterInput;
+    private CancellationTokenSource? _request;
+    private string Search => _filter.Trim();
+
+    // Do not wait for the API during prerendering: render the loading state immediately.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Load();
+            if (!_disposed)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private IEnumerable<OrderDto> FilterOrders() => _orders.Where(order =>
+        order.Customer.Contains(Search, StringComparison.OrdinalIgnoreCase));
+
+    private async Task ClearFilter()
+    {
+        _filter = string.Empty;
+        await _filterInput.FocusAsync();
+    }
+
+    private Task HandleKey(KeyboardEventArgs args) => args.Key == "Escape" ? ClearFilter() : Task.CompletedTask;
+
+    private async Task Load()
+    {
+        _request?.Cancel();
+        var request = new CancellationTokenSource();
+        _request = request;
+        _loading = true;
+        _error = false;
+        try
+        {
+            var orders = await Ordering.GetOrdersAsync(request.Token);
+            if (_request == request && !_disposed)
+            {
+                _orders = orders;
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException)
+        {
+            if (_request == request && !_disposed && !request.IsCancellationRequested)
+            {
+                _error = true;
+                Logger.LogWarning(exception, "Failed to load orders");
+            }
+        }
+        finally
+        {
+            if (_request == request && !_disposed)
+            {
+                _loading = false;
+            }
+            request.Dispose();
+            if (_request == request)
+            {
+                _request = null;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _request?.Cancel();
+    }
+}

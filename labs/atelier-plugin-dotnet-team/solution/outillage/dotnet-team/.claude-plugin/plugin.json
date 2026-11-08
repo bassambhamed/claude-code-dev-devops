@@ -1,0 +1,8 @@
+{
+  "name": "dotnet-team",
+  "version": "1.0.0",
+  "description": "Pratiques .NET : livraison, tests, migrations, sécurité et recette UI.",
+  "author": {
+    "name": "Équipe ECommerce"
+  }
+}

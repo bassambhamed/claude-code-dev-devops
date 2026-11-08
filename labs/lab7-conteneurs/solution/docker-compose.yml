@@ -1,0 +1,81 @@
+# Runs the whole application without Aspire: PostgreSQL plus the four services.
+#   export POSTGRES_PASSWORD=...   (never committed; a git-ignored .env file also works)
+#   docker compose up -d --build
+#   curl http://localhost:5067/catalog/api/products
+#
+# Outside the AppHost nobody injects service discovery or connection strings:
+# this file provides them, as the services__<name>__http__0 and ConnectionStrings__<db> variables.
+name: ecommerce
+
+services:
+  postgres:
+    image: postgres:17.11@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD (environment variable or .env file)}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # The postgres image has a shell and pg_isready, unlike the chiseled .NET images.
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  catalog:
+    image: ${REGISTRE:-ecommerce}/catalog:${VERSION:-1.0}
+    build:
+      context: .
+      dockerfile: src/ECommerce.Catalog.Api/Dockerfile
+    environment:
+      # Read by builder.AddNpgsqlDbContext<CatalogDbContext>("catalogdb"). Migrate() creates the database.
+      ConnectionStrings__catalogdb: Host=postgres;Port=5432;Database=catalogdb;Username=postgres;Password=${POSTGRES_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  ordering:
+    image: ${REGISTRE:-ecommerce}/ordering:${VERSION:-1.0}
+    build:
+      context: .
+      dockerfile: src/ECommerce.Ordering.Api/Dockerfile
+    environment:
+      ConnectionStrings__orderingdb: Host=postgres;Port=5432;Database=orderingdb;Username=postgres;Password=${POSTGRES_PASSWORD}
+      # Resolves https+http://catalog (CatalogServiceClient). Services listen on 8080, HTTP only.
+      services__catalog__http__0: http://catalog:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+    restart: on-failure
+
+  gateway:
+    image: ${REGISTRE:-ecommerce}/gateway:${VERSION:-1.0}
+    build:
+      context: .
+      dockerfile: src/ECommerce.Gateway/Dockerfile
+    environment:
+      # YARP destinations https+http://catalog and https+http://ordering (appsettings.json).
+      services__catalog__http__0: http://catalog:8080
+      services__ordering__http__0: http://ordering:8080
+    ports:
+      - "5067:8080"
+    depends_on:
+      - catalog
+      - ordering
+
+  web:
+    image: ${REGISTRE:-ecommerce}/web:${VERSION:-1.0}
+    build:
+      context: .
+      dockerfile: src/ECommerce.Web/Dockerfile
+    environment:
+      services__gateway__http__0: http://gateway:8080
+    ports:
+      - "5190:8080"
+    depends_on:
+      - gateway
+
+volumes:
+  pgdata:

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "environment",
+    "existingSecret",
+    "images",
+    "replicas",
+    "resources",
+    "postgres"
+  ],
+  "properties": {
+    "environment": {
+      "enum": [
+        "Development",
+        "Production"
+      ]
+    },
+    "existingSecret": {
+      "type": "string",
+      "minLength": 1
+    },
+    "images": {
+      "type": "object",
+      "required": [
+        "registry",
+        "tag",
+        "pullPolicy",
+        "digests"
+      ],
+      "properties": {
+        "registry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "digests": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "replicas": {
+      "type": "object",
+      "required": [
+        "catalog",
+        "ordering",
+        "gateway",
+        "web"
+      ],
+      "properties": {
+        "catalog": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ordering": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gateway": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "web": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "host",
+        "image",
+        "storage",
+        "resources"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storageClass": {
+          "type": "string"
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

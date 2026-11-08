@@ -1,0 +1,103 @@
+{{- $root := . -}}
+{{- $base := include "ecommerce.name" . -}}
+{{- range $service := list "catalog" "ordering" "gateway" "web" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $base }}-{{ $service }}
+  labels:
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/name: {{ $service }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/name: {{ $service }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $base }}-{{ $service }}
+spec:
+  replicas: {{ index $root.Values.replicas $service }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/name: {{ $service }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/name: {{ $service }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+      containers:
+        - name: {{ $service }}
+          {{- $digest := index $root.Values.images.digests $service | default "" }}
+          {{- if $digest }}
+          image: "{{ $root.Values.images.registry }}/{{ $service }}@{{ $digest }}"
+          {{- else }}
+          image: "{{ $root.Values.images.registry }}/{{ $service }}:{{ $root.Values.images.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ $root.Values.images.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: {{ $root.Values.environment | quote }}
+            - name: ASPNETCORE_HTTP_PORTS
+              value: "8080"
+            {{- if or (eq $service "catalog") (eq $service "ordering") }}
+            - name: ConnectionStrings__{{ $service }}db
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret is required" $root.Values.existingSecret }}
+                  key: ConnectionStrings__{{ $service }}db
+            {{- end }}
+            {{- if or (eq $service "ordering") (eq $service "gateway") }}
+            - name: services__catalog__http__0
+              value: "http://{{ $base }}-catalog:8080"
+            {{- end }}
+            {{- if eq $service "gateway" }}
+            - name: services__ordering__http__0
+              value: "http://{{ $base }}-ordering:8080"
+            {{- end }}
+            {{- if eq $service "web" }}
+            - name: services__gateway__http__0
+              value: "http://{{ $base }}-gateway:8080"
+            {{- end }}
+          resources:
+            {{- toYaml $root.Values.resources | nindent 12 }}
+          startupProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 2
+            failureThreshold: 90
+          readinessProbe:
+            {{- if eq $root.Values.environment "Development" }}
+            httpGet: {path: /health, port: http}
+            {{- else }}
+            tcpSocket: {port: http}
+            {{- end }}
+            periodSeconds: 3
+          livenessProbe:
+            {{- if eq $root.Values.environment "Development" }}
+            httpGet: {path: /alive, port: http}
+            {{- else }}
+            tcpSocket: {port: http}
+            {{- end }}
+            periodSeconds: 10
+{{- end }}

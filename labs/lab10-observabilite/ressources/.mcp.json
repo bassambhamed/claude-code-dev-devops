@@ -1,0 +1,56 @@
+{
+  "mcpServers": {
+    "postgres-catalog": {
+      "command": "bash",
+      "args": [
+        ".claude/mcp/postgres-lecture.sh",
+        "catalogdb"
+      ]
+    },
+    "postgres-ordering": {
+      "command": "bash",
+      "args": [
+        ".claude/mcp/postgres-lecture.sh",
+        "orderingdb"
+      ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.84",
+        "--isolated",
+        "--ignore-https-errors",
+        "--output-dir",
+        "${TMPDIR:-/tmp}/playwright-mcp"
+      ]
+    },
+    "aspire": {
+      "command": "aspire",
+      "args": [
+        "agent",
+        "mcp"
+      ]
+    },
+    "grafana": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GRAFANA_URL",
+        "-e",
+        "GRAFANA_SERVICE_ACCOUNT_TOKEN",
+        "grafana/mcp-grafana:2.2.0",
+        "-t",
+        "stdio",
+        "--disable-write"
+      ],
+      "env": {
+        "GRAFANA_URL": "http://host.docker.internal:3000",
+        "GRAFANA_SERVICE_ACCOUNT_TOKEN": "${GRAFANA_JETON_LECTURE}"
+      }
+    }
+  }
+}

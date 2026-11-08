@@ -1,0 +1,3 @@
+{{- if not .Values.postgres.enabled -}}
+{{- $_ := required "postgres.host is required when postgres.enabled=false; prepare existingSecret with this host" .Values.postgres.host -}}
+{{- end -}}

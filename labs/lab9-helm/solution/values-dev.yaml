@@ -1,0 +1,7 @@
+environment: Development
+images:
+  tag: "1.0"
+replicas: {catalog: 1, ordering: 1, gateway: 1, web: 1}
+resources:
+  requests: {cpu: 50m, memory: 128Mi}
+  limits: {cpu: "1", memory: 512Mi}

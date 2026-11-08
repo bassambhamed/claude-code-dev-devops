@@ -1,0 +1,17 @@
+# Configuration gitleaks de l'équipe ECommerce.
+# À placer à la racine du dépôt : gitleaks git --config .gitleaks.toml .
+#
+# Les règles par défaut de gitleaks ne connaissent pas les clés de notre fournisseur de
+# paiement : on les ajoute, sans retirer les règles standard.
+
+title = "Règles gitleaks de l'équipe ECommerce"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "ecommerce-cle-paiement"
+description = "Clé d'API du fournisseur de paiement (ecpk_live_ ou ecpk_test_)"
+regex = '''ecpk_(live|test)_[0-9a-f]{32}'''
+keywords = ["ecpk_"]
+tags = ["paiement", "cle-maison"]

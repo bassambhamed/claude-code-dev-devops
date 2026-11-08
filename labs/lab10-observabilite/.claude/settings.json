@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet format *)",
+      "Bash(dotnet list *)",
+      "Bash(dotnet --version)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(bash *.claude/skills/smoke-test/smoke.sh)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git checkout -b *)",
+      "Bash(git stash *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr checks *)",
+      "Bash(bash *.claude/skills/ship/verifier.sh)",
+      "Bash(dotnet new xunit *)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet add * reference *)",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet user-secrets init *)",
+      "Bash(gitleaks *)",
+      "Bash(dotnet ef migrations list *)",
+      "Bash(dotnet ef migrations script *)",
+      "Bash(dotnet ef migrations has-pending-model-changes *)",
+      "Bash(bash *.claude/skills/review-migration/essai-ephemere.sh *)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_tabs",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_close",
+      "Bash(bash *.claude/skills/ci-local/ci-local.sh*)",
+      "Bash(docker run --rm * rhysd/actionlint:1.7.12*)",
+      "Bash(gh run list *)",
+      "Bash(gh run view *)",
+      "Bash(docker build *)",
+      "Bash(docker images *)",
+      "Bash(docker image ls *)",
+      "Bash(docker image inspect *)",
+      "Bash(docker history *)",
+      "Bash(docker buildx imagetools inspect *)",
+      "Bash(docker compose build *)",
+      "Bash(docker compose ps *)",
+      "Bash(docker compose logs *)",
+      "Bash(docker compose config --quiet)",
+      "Bash(docker compose config --services)",
+      "Bash(trivy image *)",
+      "Bash(docker scout cves *)",
+      "Bash(jq *)",
+      "Bash(curl -s https://api.nuget.org/*)",
+      "Bash(bash *.claude/skills/revue-docker/verifier-image.sh *)",
+      "Bash(kubectl get *)",
+      "Bash(kubectl describe *)",
+      "Bash(kubectl logs *)",
+      "Bash(kubectl events *)",
+      "Bash(kubectl top *)",
+      "Bash(kubectl config current-context)",
+      "Bash(helm lint *)",
+      "Bash(helm template *)",
+      "Bash(helm list *)",
+      "Bash(helm status *)",
+      "Bash(helm history *)",
+      "mcp__aspire__list_resources",
+      "mcp__aspire__list_console_logs",
+      "mcp__aspire__list_structured_logs",
+      "mcp__aspire__list_traces",
+      "mcp__aspire__list_trace_structured_logs",
+      "mcp__aspire__list_apphosts",
+      "mcp__aspire__select_apphost",
+      "mcp__grafana__*",
+      "Bash(aspire otel *)",
+      "Bash(aspire describe *)",
+      "Bash(bash *.claude/skills/diagnostic-traces/mesurer.sh*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(**/*.pfx)",
+      "Read(**/*.key)",
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "Bash(git push *--force*)",
+      "Bash(git push -f *)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(git reset --hard *)",
+      "Bash(dotnet user-secrets list *)",
+      "Bash(dotnet user-secrets set *)",
+      "Read(~/.microsoft/usersecrets/**)",
+      "Bash(cat *usersecrets*)",
+      "Read(./**/appsettings.Production.json)",
+      "Read(~/.config/lab-ecommerce/**)",
+      "mcp__playwright__browser_run_code_unsafe",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_file_upload",
+      "mcp__playwright__browser_drop",
+      "Bash(docker system prune *)",
+      "Bash(docker volume prune *)",
+      "Bash(docker volume rm *)",
+      "Bash(docker compose down -v*)",
+      "Bash(docker compose down --volumes*)",
+      "Bash(docker compose config)",
+      "Bash(kubectl delete namespace *)",
+      "Bash(kubectl config use-context *)",
+      "Bash(kubectl get secret *)",
+      "Bash(kubectl get secrets *)",
+      "Bash(kubectl exec *)",
+      "Bash(helm uninstall *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge *)",
+      "Bash(dotnet ef database update *)",
+      "Bash(dotnet ef migrations add *)",
+      "Bash(docker compose up *)",
+      "Bash(docker compose down *)",
+      "Bash(docker compose restart *)",
+      "Bash(docker run *)",
+      "Bash(docker inspect *)",
+      "Bash(kubectl apply *)",
+      "Bash(kubectl rollout *)",
+      "Bash(kubectl scale *)",
+      "Bash(kubectl delete pod *)",
+      "Bash(kubectl port-forward *)",
+      "Bash(helm upgrade *)",
+      "Bash(helm install *)",
+      "Bash(helm rollback *)",
+      "mcp__aspire__execute_resource_command"
+    ]
+  },
+  "env": {
+    "DOTNET_CLI_UI_LANGUAGE": "en"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/garde-git.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/bloquer-secrets.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/garde-kubectl.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/formater.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-tests-verts.sh",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
